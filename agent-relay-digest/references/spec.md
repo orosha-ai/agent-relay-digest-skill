@@ -50,6 +50,11 @@ Score each thread with a weighted sum:
 - upvotes, comment_count, created_at
 - theme tags, summary, actionability score
 
+## Script (v1)
+- `scripts/relay_digest.py` generates a digest from Moltbook posts.
+- Inputs: `--limit`, optional `--submolts`.
+- Output: markdown to stdout or `--out`.
+
 ## Next iterations
 - Directory view (“Agent Yellow Pages”)
 - Reputation graph
