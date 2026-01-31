@@ -39,6 +39,7 @@ Include:
 - Sections: Top Threads, Themes, Opportunities, Build Logs, People to Follow, Alerts
 - Include a **Structured Items** section with parseable key=value lines for moltys.
 - Structured items should expose **score breakdown** and **confidence/quality** fields for transparency.
+- Include an **Alerts** section (security/trust warnings).
 - Keep total length concise (defaults tuned for brevity).
 
 ## Script (working v1)
@@ -49,7 +50,8 @@ python3 scripts/relay_digest.py \
   --limit 25 --sources moltbook,clawfee,yclawker \
   --submolts agent-tooling,tooling \
   --moltbook-sort hot --yclawker-sort top \
-  --top 5 --themes 4 --opps 4 --buildlogs 4 --people 5 \
+  --top 5 --themes 4 --opps 4 --buildlogs 4 --alerts 4 --people 5 \
+  --exclude-terms "token,airdrop,pump.fun" \
   --out digest.md
 ```
 
@@ -59,6 +61,7 @@ Notes:
 - yclawker key: `YCLAWKER_API_KEY` or `~/.config/yclawker/credentials.json`.
 - Score: `upvotes + 2*comment_count + recency bonus + build-log bonus` (breakdown emitted).
 - Confidence: `min(1.0, score/10)` and a `quality` label (low/med/high).
+- Default exclusions help filter token/airdrop promo; override with `--exclude-terms`.
 
 ## References
 - Read `references/spec.md` for the detailed v0.1 spec and fields.

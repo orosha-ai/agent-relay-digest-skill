@@ -27,6 +27,8 @@ STOPWORDS = {
 
 OPPORTUNITY_TERMS = ["help", "looking for", "collab", "collaboration", "bounty", "need", "seeking"]
 BUILDLOG_TERMS = ["build", "built", "shipped", "launch", "launched", "release", "mvp", "demo", "nightly", "log", "update"]
+ALERT_TERMS = ["supply-chain", "credential", "token", "phishing", "malware", "exploit", "vuln", "vulnerability", "breach", "backdoor"]
+DEFAULT_EXCLUDE_TERMS = ["token", "airdrop", "pump.fun", "memecoin", "coin", "crypto", "launchpad"]
 
 
 def load_json(path):
@@ -183,9 +185,14 @@ def recency_bonus(p):
     return 0
 
 
+def contains_terms(text, terms):
+    text = (text or "").lower()
+    return any(term in text for term in terms)
+
+
 def is_buildlog(p):
     text = (p.get("title", "") + " " + (p.get("content") or "")).lower()
-    return any(term in text for term in BUILDLOG_TERMS)
+    return contains_terms(text, BUILDLOG_TERMS)
 
 
 def score_components(p):
@@ -236,7 +243,17 @@ def extract_keywords(titles, limit=4):
 
 def is_opportunity(p):
     text = (p.get("title", "") + " " + (p.get("content") or "")).lower()
-    return any(term in text for term in OPPORTUNITY_TERMS)
+    return contains_terms(text, OPPORTUNITY_TERMS)
+
+
+def is_alert(p, terms=None):
+    text = (p.get("title", "") + " " + (p.get("content") or "")).lower()
+    return contains_terms(text, terms or ALERT_TERMS)
+
+
+def should_exclude(p, terms=None):
+    text = (p.get("title", "") + " " + (p.get("content") or "")).lower()
+    return contains_terms(text, terms or DEFAULT_EXCLUDE_TERMS)
 
 
 def fmt_thread(p):
@@ -247,7 +264,7 @@ def fmt_thread(p):
     return f"- **{title}** ({source}) — {author} → {url}"
 
 
-def fmt_structured(p):
+def fmt_structured(p, alert_terms=None):
     title = (p.get("title", "") or "(untitled)").replace('"', "'")
     pid = p.get("id", "")
     tags = []
@@ -255,6 +272,8 @@ def fmt_structured(p):
         tags.append("opportunity")
     if is_buildlog(p):
         tags.append("buildlog")
+    if is_alert(p, terms=alert_terms):
+        tags.append("alert")
     parts = score_components(p)
     conf = confidence_score(p)
     quality = quality_label(conf)
@@ -267,12 +286,13 @@ def fmt_structured(p):
     )
 
 
-def render_digest(posts, top_n=5, theme_n=4, opp_n=4, build_n=4, people_n=5):
+def render_digest(posts, top_n=5, theme_n=4, opp_n=4, build_n=4, alert_n=4, people_n=5, alert_terms=None):
     posts = sorted(posts, key=score_post, reverse=True)
     top_threads = posts[:top_n]
     themes = extract_keywords([p.get("title", "") for p in posts], limit=theme_n)
     opportunities = [p for p in posts if is_opportunity(p)][:opp_n]
     buildlogs = [p for p in posts if is_buildlog(p)][:build_n]
+    alerts = [p for p in posts if is_alert(p, terms=alert_terms)][:alert_n]
     people = []
     seen = set()
     for p in top_threads:
@@ -295,6 +315,13 @@ def render_digest(posts, top_n=5, theme_n=4, opp_n=4, build_n=4, people_n=5):
 
     lines.append("\n## Themes")
     lines.append("- " + ", ".join(themes) if themes else "- (none detected)")
+
+    lines.append("\n## Alerts")
+    if alerts:
+        for p in alerts:
+            lines.append(fmt_thread(p))
+    else:
+        lines.append("- (none detected)")
 
     lines.append("\n## Opportunities")
     if opportunities:
@@ -320,7 +347,7 @@ def render_digest(posts, top_n=5, theme_n=4, opp_n=4, build_n=4, people_n=5):
     lines.append("\n## Structured Items (machine-friendly)")
     lines.append(f"- digest_id={now} generated_at={generated_at} items={len(top_threads)} avg_confidence={avg_conf}")
     for p in top_threads:
-        lines.append(fmt_structured(p))
+        lines.append(fmt_structured(p, alert_terms=alert_terms))
 
     return "\n".join(lines) + "\n"
 
@@ -336,12 +363,17 @@ def main():
     ap.add_argument("--themes", type=int, default=4, help="Number of theme keywords")
     ap.add_argument("--opps", type=int, default=4, help="Number of opportunities")
     ap.add_argument("--buildlogs", type=int, default=4, help="Number of build logs")
+    ap.add_argument("--alerts", type=int, default=4, help="Number of alerts")
+    ap.add_argument("--alert-terms", type=str, default=", ".join(ALERT_TERMS), help="Comma-separated alert terms")
+    ap.add_argument("--exclude-terms", type=str, default=", ".join(DEFAULT_EXCLUDE_TERMS), help="Comma-separated exclusion terms")
     ap.add_argument("--people", type=int, default=5, help="Number of people to follow")
     ap.add_argument("--out", type=str, default="", help="Write digest to file")
     args = ap.parse_args()
 
     submolts = [s.strip() for s in args.submolts.split(",") if s.strip()] or None
     sources = [s.strip() for s in args.sources.split(",") if s.strip()]
+    alert_terms = [s.strip() for s in args.alert_terms.split(",") if s.strip()]
+    exclude_terms = [s.strip() for s in args.exclude_terms.split(",") if s.strip()]
 
     posts = []
     if "moltbook" in sources:
@@ -355,13 +387,18 @@ def main():
         print("ERROR: No posts fetched. Check API keys/tokens.", file=sys.stderr)
         sys.exit(1)
 
+    if exclude_terms:
+        posts = [p for p in posts if not should_exclude(p, terms=exclude_terms)]
+
     digest = render_digest(
         posts,
         top_n=args.top,
         theme_n=args.themes,
         opp_n=args.opps,
         build_n=args.buildlogs,
+        alert_n=args.alerts,
         people_n=args.people,
+        alert_terms=alert_terms,
     )
 
     if args.out:
