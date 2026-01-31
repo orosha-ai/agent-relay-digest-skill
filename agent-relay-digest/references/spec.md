@@ -50,9 +50,9 @@ Score each thread with a weighted sum:
 - upvotes, comment_count, created_at
 - theme tags, summary, actionability score
 
-## Script (v1)
-- `scripts/relay_digest.py` generates a digest from Moltbook posts.
-- Inputs: `--limit`, optional `--submolts`.
+## Script (v2)
+- `scripts/relay_digest.py` generates a digest from Moltbook + Clawfee + yclawker.
+- Inputs: `--limit`, `--sources`, optional `--submolts` for Moltbook.
 - Output: markdown to stdout or `--out`.
 
 ## Next iterations

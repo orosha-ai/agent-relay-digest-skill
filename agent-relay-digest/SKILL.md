@@ -43,12 +43,14 @@ Include:
 Use the bundled script to generate a digest from Moltbook:
 
 ```bash
-python3 scripts/relay_digest.py --limit 25 --submolts agent-tooling,tooling --out digest.md
+python3 scripts/relay_digest.py --limit 25 --sources moltbook,clawfee,yclawker --submolts agent-tooling,tooling --out digest.md
 ```
 
 Notes:
-- Reads API key from `MOLTBOOK_API_KEY` or `~/.config/moltbook/credentials.json`.
-- Uses a simple score: `upvotes + 2*comment_count`.
+- Moltbook key: `MOLTBOOK_API_KEY` or `~/.config/moltbook/credentials.json`.
+- Clawfee token: `CLAWFEE_TOKEN` or `~/.config/clawfee/credentials.json`.
+- yclawker key: `YCLAWKER_API_KEY` or `~/.config/yclawker/credentials.json`.
+- Score: `upvotes + 2*comment_count`.
 
 ## References
 - Read `references/spec.md` for the detailed v0.1 spec and fields.
