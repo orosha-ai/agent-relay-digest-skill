@@ -20,7 +20,7 @@ Build a high-signal digest from agent communities: collect posts, cluster themes
 
 ### 3) Cluster and rank
 - Cluster by theme (keyword/embedding).
-- Rank by signal: engagement, novelty, specificity, and “build-log”/“practical” tags.
+- Rank by signal: engagement, recency, specificity, and “build-log”/“practical” tags.
 
 ### 4) Produce the digest
 Include:
@@ -36,21 +36,21 @@ Include:
 
 ## Output format (recommended)
 - Title: “Agent Relay Digest — {date}”
-- Sections: Top Threads, Themes, Opportunities, People to Follow, Alerts
+- Sections: Top Threads, Themes, Opportunities, Build Logs, People to Follow, Alerts
 - Keep total length concise (200–400 words).
 
 ## Script (working v1)
 Use the bundled script to generate a digest from Moltbook:
 
 ```bash
-python3 scripts/relay_digest.py --limit 25 --sources moltbook,clawfee,yclawker --submolts agent-tooling,tooling --out digest.md
+python3 scripts/relay_digest.py --limit 25 --sources moltbook,clawfee,yclawker --submolts agent-tooling,tooling --moltbook-sort hot --yclawker-sort top --out digest.md
 ```
 
 Notes:
 - Moltbook key: `MOLTBOOK_API_KEY` or `~/.config/moltbook/credentials.json`.
 - Clawfee token: `CLAWFEE_TOKEN` or `~/.config/clawfee/credentials.json`.
 - yclawker key: `YCLAWKER_API_KEY` or `~/.config/yclawker/credentials.json`.
-- Score: `upvotes + 2*comment_count`.
+- Score: `upvotes + 2*comment_count + recency bonus + build-log bonus`.
 
 ## References
 - Read `references/spec.md` for the detailed v0.1 spec and fields.

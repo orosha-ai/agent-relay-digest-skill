@@ -26,6 +26,7 @@ STOPWORDS = {
 }
 
 OPPORTUNITY_TERMS = ["help", "looking for", "collab", "collaboration", "bounty", "need", "seeking"]
+BUILDLOG_TERMS = ["build", "built", "shipped", "launch", "launched", "release", "mvp", "demo", "nightly", "log", "update"]
 
 
 def load_json(path):
@@ -60,12 +61,15 @@ def load_yclawker_key():
 
 
 def fetch_json(url, headers=None, timeout=20):
-    req = urllib.request.Request(url, headers=headers or {})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.load(r)
+    req = urllib.request.Request(url, headers=headers or {"User-Agent": "agent-relay-digest/1.1"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.load(r)
+    except Exception:
+        return {}
 
 
-def fetch_moltbook(limit=25, submolts=None):
+def fetch_moltbook(limit=25, submolts=None, sort="hot"):
     api_key = load_moltbook_key()
     if not api_key:
         return []
@@ -73,12 +77,12 @@ def fetch_moltbook(limit=25, submolts=None):
     posts = []
     if submolts:
         for s in submolts:
-            params = urllib.parse.urlencode({"submolt": s, "sort": "hot", "limit": limit})
+            params = urllib.parse.urlencode({"submolt": s, "sort": sort, "limit": limit})
             url = f"{MOLTBOOK_API}/posts?{params}"
             data = fetch_json(url, headers=headers)
             posts.extend(data.get("posts", []))
     else:
-        params = urllib.parse.urlencode({"sort": "hot", "limit": limit})
+        params = urllib.parse.urlencode({"sort": sort, "limit": limit})
         url = f"{MOLTBOOK_API}/posts?{params}"
         data = fetch_json(url, headers=headers)
         posts.extend(data.get("posts", []))
@@ -98,6 +102,7 @@ def fetch_moltbook(limit=25, submolts=None):
             "submolt": (p.get("submolt") or {}).get("name", "moltbook"),
             "upvotes": p.get("upvotes") or 0,
             "comment_count": p.get("comment_count") or 0,
+            "created_at": p.get("created_at"),
             "url": f"https://www.moltbook.com/post/{pid}",
             "source": "moltbook",
         })
@@ -122,6 +127,7 @@ def fetch_clawfee(limit=25):
             "submolt": "clawfee",
             "upvotes": p.get("like_count") or 0,
             "comment_count": len(p.get("replies") or []),
+            "created_at": p.get("created_at"),
             "url": f"https://clawfee.shop/post/{pid}",
             "source": "clawfee",
         })
@@ -144,14 +150,47 @@ def fetch_yclawker(limit=25, sort="top"):
             "submolt": "yclawker",
             "upvotes": p.get("upvotes") or 0,
             "comment_count": p.get("comment_count") or 0,
+            "created_at": p.get("created_at") or p.get("time"),
             "url": f"https://news.yclawbinator.com/item?id={pid}",
             "source": "yclawker",
         })
     return out
 
 
+def parse_dt(value):
+    if not value:
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(value, tz=timezone.utc)
+        except Exception:
+            return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def recency_bonus(p):
+    dt = parse_dt(p.get("created_at"))
+    if not dt:
+        return 0
+    hours = (datetime.now(timezone.utc) - dt).total_seconds() / 3600
+    if hours <= 24:
+        return 3
+    if hours <= 72:
+        return 1
+    return 0
+
+
+def is_buildlog(p):
+    text = (p.get("title", "") + " " + (p.get("content") or "")).lower()
+    return any(term in text for term in BUILDLOG_TERMS)
+
+
 def score_post(p):
-    return (p.get("upvotes") or 0) + 2 * (p.get("comment_count") or 0)
+    base = (p.get("upvotes") or 0) + 2 * (p.get("comment_count") or 0)
+    return base + recency_bonus(p) + (2 if is_buildlog(p) else 0)
 
 
 def extract_keywords(titles):
@@ -181,9 +220,10 @@ def fmt_thread(p):
 
 def render_digest(posts):
     posts = sorted(posts, key=score_post, reverse=True)
-    top_threads = posts[:7]
+    top_threads = posts[:6]
     themes = extract_keywords([p.get("title", "") for p in posts])
     opportunities = [p for p in posts if is_opportunity(p)][:5]
+    buildlogs = [p for p in posts if is_buildlog(p)][:5]
     people = []
     seen = set()
     for p in top_threads:
@@ -211,6 +251,13 @@ def render_digest(posts):
     else:
         lines.append("- (none detected)")
 
+    lines.append("\n## Build Logs")
+    if buildlogs:
+        for p in buildlogs:
+            lines.append(fmt_thread(p))
+    else:
+        lines.append("- (none detected)")
+
     lines.append("\n## People to Follow")
     if people:
         for name in people:
@@ -226,6 +273,8 @@ def main():
     ap.add_argument("--limit", type=int, default=25, help="Posts per source")
     ap.add_argument("--submolts", type=str, default="", help="Moltbook submolts (comma-separated)")
     ap.add_argument("--sources", type=str, default="moltbook,clawfee,yclawker", help="Comma-separated sources")
+    ap.add_argument("--moltbook-sort", type=str, default="hot", help="Moltbook sort: hot|new|top|rising")
+    ap.add_argument("--yclawker-sort", type=str, default="top", help="yclawker sort: top|new|best")
     ap.add_argument("--out", type=str, default="", help="Write digest to file")
     args = ap.parse_args()
 
@@ -234,11 +283,11 @@ def main():
 
     posts = []
     if "moltbook" in sources:
-        posts.extend(fetch_moltbook(limit=args.limit, submolts=submolts))
+        posts.extend(fetch_moltbook(limit=args.limit, submolts=submolts, sort=args.moltbook_sort))
     if "clawfee" in sources:
         posts.extend(fetch_clawfee(limit=args.limit))
     if "yclawker" in sources:
-        posts.extend(fetch_yclawker(limit=args.limit))
+        posts.extend(fetch_yclawker(limit=args.limit, sort=args.yclawker_sort))
 
     if not posts:
         print("ERROR: No posts fetched. Check API keys/tokens.", file=sys.stderr)
