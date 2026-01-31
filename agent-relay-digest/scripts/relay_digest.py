@@ -188,12 +188,41 @@ def is_buildlog(p):
     return any(term in text for term in BUILDLOG_TERMS)
 
 
+def score_components(p):
+    upvotes = p.get("upvotes") or 0
+    comments = p.get("comment_count") or 0
+    base = upvotes + 2 * comments
+    rec = recency_bonus(p)
+    build = 2 if is_buildlog(p) else 0
+    total = base + rec + build
+    return {
+        "upvotes": upvotes,
+        "comments": comments,
+        "base": base,
+        "recency": rec,
+        "buildlog": build,
+        "total": total,
+    }
+
+
 def score_post(p):
-    base = (p.get("upvotes") or 0) + 2 * (p.get("comment_count") or 0)
-    return base + recency_bonus(p) + (2 if is_buildlog(p) else 0)
+    return score_components(p)["total"]
 
 
-def extract_keywords(titles):
+def confidence_score(p):
+    total = score_components(p)["total"]
+    return round(min(1.0, total / 10.0), 2)
+
+
+def quality_label(conf):
+    if conf >= 0.75:
+        return "high"
+    if conf >= 0.5:
+        return "med"
+    return "low"
+
+
+def extract_keywords(titles, limit=4):
     words = []
     for t in titles:
         for w in re.findall(r"[a-zA-Z0-9']+", t.lower()):
@@ -202,7 +231,7 @@ def extract_keywords(titles):
             if w in STOPWORDS:
                 continue
             words.append(w)
-    return [w for w, _ in Counter(words).most_common(6)]
+    return [w for w, _ in Counter(words).most_common(limit)]
 
 
 def is_opportunity(p):
@@ -220,24 +249,30 @@ def fmt_thread(p):
 
 def fmt_structured(p):
     title = (p.get("title", "") or "(untitled)").replace('"', "'")
+    pid = p.get("id", "")
     tags = []
     if is_opportunity(p):
         tags.append("opportunity")
     if is_buildlog(p):
         tags.append("buildlog")
+    parts = score_components(p)
+    conf = confidence_score(p)
+    quality = quality_label(conf)
+    parts_str = f"up:{parts['upvotes']},com:{parts['comments']},rec:{parts['recency']},build:{parts['buildlog']}"
     return (
-        f"- title=\"{title}\" author={p.get('author','unknown')} "
+        f"- id={pid} title=\"{title}\" author={p.get('author','unknown')} "
         f"source={p.get('source','source')} submolt={p.get('submolt','')} "
-        f"score={score_post(p)} url={p.get('url','')} tags={','.join(tags) if tags else '-'}"
+        f"score={parts['total']} parts={parts_str} confidence={conf} quality={quality} "
+        f"url={p.get('url','')} tags={','.join(tags) if tags else '-'}"
     )
 
 
-def render_digest(posts):
+def render_digest(posts, top_n=5, theme_n=4, opp_n=4, build_n=4, people_n=5):
     posts = sorted(posts, key=score_post, reverse=True)
-    top_threads = posts[:6]
-    themes = extract_keywords([p.get("title", "") for p in posts])
-    opportunities = [p for p in posts if is_opportunity(p)][:5]
-    buildlogs = [p for p in posts if is_buildlog(p)][:5]
+    top_threads = posts[:top_n]
+    themes = extract_keywords([p.get("title", "") for p in posts], limit=theme_n)
+    opportunities = [p for p in posts if is_opportunity(p)][:opp_n]
+    buildlogs = [p for p in posts if is_buildlog(p)][:build_n]
     people = []
     seen = set()
     for p in top_threads:
@@ -245,10 +280,13 @@ def render_digest(posts):
         if name and name not in seen:
             seen.add(name)
             people.append(name)
-        if len(people) >= 5:
+        if len(people) >= people_n:
             break
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    avg_conf = round(sum(confidence_score(p) for p in top_threads) / len(top_threads), 2) if top_threads else 0
+
     lines = []
     lines.append(f"# Agent Relay Digest — {now}\n")
     lines.append("## Top Threads")
@@ -280,6 +318,7 @@ def render_digest(posts):
         lines.append("- (none detected)")
 
     lines.append("\n## Structured Items (machine-friendly)")
+    lines.append(f"- digest_id={now} generated_at={generated_at} items={len(top_threads)} avg_confidence={avg_conf}")
     for p in top_threads:
         lines.append(fmt_structured(p))
 
@@ -293,6 +332,11 @@ def main():
     ap.add_argument("--sources", type=str, default="moltbook,clawfee,yclawker", help="Comma-separated sources")
     ap.add_argument("--moltbook-sort", type=str, default="hot", help="Moltbook sort: hot|new|top|rising")
     ap.add_argument("--yclawker-sort", type=str, default="top", help="yclawker sort: top|new|best")
+    ap.add_argument("--top", type=int, default=5, help="Number of top threads")
+    ap.add_argument("--themes", type=int, default=4, help="Number of theme keywords")
+    ap.add_argument("--opps", type=int, default=4, help="Number of opportunities")
+    ap.add_argument("--buildlogs", type=int, default=4, help="Number of build logs")
+    ap.add_argument("--people", type=int, default=5, help="Number of people to follow")
     ap.add_argument("--out", type=str, default="", help="Write digest to file")
     args = ap.parse_args()
 
@@ -311,7 +355,14 @@ def main():
         print("ERROR: No posts fetched. Check API keys/tokens.", file=sys.stderr)
         sys.exit(1)
 
-    digest = render_digest(posts)
+    digest = render_digest(
+        posts,
+        top_n=args.top,
+        theme_n=args.themes,
+        opp_n=args.opps,
+        build_n=args.buildlogs,
+        people_n=args.people,
+    )
 
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:

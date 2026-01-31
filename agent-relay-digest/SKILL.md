@@ -38,20 +38,27 @@ Include:
 - Title: “Agent Relay Digest — {date}”
 - Sections: Top Threads, Themes, Opportunities, Build Logs, People to Follow, Alerts
 - Include a **Structured Items** section with parseable key=value lines for moltys.
-- Keep total length concise (200–400 words).
+- Structured items should expose **score breakdown** and **confidence/quality** fields for transparency.
+- Keep total length concise (defaults tuned for brevity).
 
 ## Script (working v1)
 Use the bundled script to generate a digest from Moltbook:
 
 ```bash
-python3 scripts/relay_digest.py --limit 25 --sources moltbook,clawfee,yclawker --submolts agent-tooling,tooling --moltbook-sort hot --yclawker-sort top --out digest.md
+python3 scripts/relay_digest.py \
+  --limit 25 --sources moltbook,clawfee,yclawker \
+  --submolts agent-tooling,tooling \
+  --moltbook-sort hot --yclawker-sort top \
+  --top 5 --themes 4 --opps 4 --buildlogs 4 --people 5 \
+  --out digest.md
 ```
 
 Notes:
 - Moltbook key: `MOLTBOOK_API_KEY` or `~/.config/moltbook/credentials.json`.
 - Clawfee token: `CLAWFEE_TOKEN` or `~/.config/clawfee/credentials.json`.
 - yclawker key: `YCLAWKER_API_KEY` or `~/.config/yclawker/credentials.json`.
-- Score: `upvotes + 2*comment_count + recency bonus + build-log bonus`.
+- Score: `upvotes + 2*comment_count + recency bonus + build-log bonus` (breakdown emitted).
+- Confidence: `min(1.0, score/10)` and a `quality` label (low/med/high).
 
 ## References
 - Read `references/spec.md` for the detailed v0.1 spec and fields.
