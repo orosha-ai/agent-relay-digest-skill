@@ -286,7 +286,7 @@ def fmt_structured(p, alert_terms=None):
     )
 
 
-def render_digest(posts, top_n=5, theme_n=4, opp_n=4, build_n=4, alert_n=4, people_n=5, alert_terms=None):
+def render_digest(posts, top_n=5, theme_n=4, opp_n=4, build_n=4, alert_n=4, people_n=5, alert_terms=None, stats=None):
     posts = sorted(posts, key=score_post, reverse=True)
     top_threads = posts[:top_n]
     themes = extract_keywords([p.get("title", "") for p in posts], limit=theme_n)
@@ -309,6 +309,18 @@ def render_digest(posts, top_n=5, theme_n=4, opp_n=4, build_n=4, alert_n=4, peop
 
     lines = []
     lines.append(f"# Agent Relay Digest — {now}\n")
+
+    if stats:
+        lines.append("## Stats")
+        lines.append(
+            f"- fetched_total={stats.get('fetched_total', 0)} excluded={stats.get('excluded', 0)} "
+            f"below_min_score={stats.get('below_min_score', 0)} remaining={stats.get('remaining', 0)}"
+        )
+        source_bits = [f"{k}={v}" for k, v in (stats.get("by_source") or {}).items()]
+        if source_bits:
+            lines.append("- by_source: " + ", ".join(source_bits))
+        lines.append("")
+
     lines.append("## Top Threads")
     for p in top_threads:
         lines.append(fmt_thread(p))
@@ -366,6 +378,7 @@ def main():
     ap.add_argument("--alerts", type=int, default=4, help="Number of alerts")
     ap.add_argument("--alert-terms", type=str, default=", ".join(ALERT_TERMS), help="Comma-separated alert terms")
     ap.add_argument("--exclude-terms", type=str, default=", ".join(DEFAULT_EXCLUDE_TERMS), help="Comma-separated exclusion terms")
+    ap.add_argument("--min-score", type=int, default=0, help="Minimum score threshold after weighting")
     ap.add_argument("--people", type=int, default=5, help="Number of people to follow")
     ap.add_argument("--out", type=str, default="", help="Write digest to file")
     args = ap.parse_args()
@@ -387,8 +400,32 @@ def main():
         print("ERROR: No posts fetched. Check API keys/tokens.", file=sys.stderr)
         sys.exit(1)
 
+    by_source = Counter([p.get("source", "unknown") for p in posts])
+    fetched_total = len(posts)
+
+    excluded_count = 0
     if exclude_terms:
+        before = len(posts)
         posts = [p for p in posts if not should_exclude(p, terms=exclude_terms)]
+        excluded_count = before - len(posts)
+
+    below_min_score = 0
+    if args.min_score > 0:
+        before = len(posts)
+        posts = [p for p in posts if score_post(p) >= args.min_score]
+        below_min_score = before - len(posts)
+
+    if not posts:
+        print("ERROR: No posts left after filtering. Consider lowering --min-score or exclude terms.", file=sys.stderr)
+        sys.exit(1)
+
+    stats = {
+        "fetched_total": fetched_total,
+        "excluded": excluded_count,
+        "below_min_score": below_min_score,
+        "remaining": len(posts),
+        "by_source": dict(by_source),
+    }
 
     digest = render_digest(
         posts,
@@ -399,6 +436,7 @@ def main():
         alert_n=args.alerts,
         people_n=args.people,
         alert_terms=alert_terms,
+        stats=stats,
     )
 
     if args.out:

@@ -36,7 +36,7 @@ Include:
 
 ## Output format (recommended)
 - Title: “Agent Relay Digest — {date}”
-- Sections: Top Threads, Themes, Opportunities, Build Logs, People to Follow, Alerts
+- Sections: Stats, Top Threads, Themes, Opportunities, Build Logs, People to Follow, Alerts
 - Include a **Structured Items** section with parseable key=value lines for moltys.
 - Structured items should expose **score breakdown** and **confidence/quality** fields for transparency.
 - Include an **Alerts** section (security/trust warnings).
@@ -51,7 +51,7 @@ python3 scripts/relay_digest.py \
   --submolts agent-tooling,tooling \
   --moltbook-sort hot --yclawker-sort top \
   --top 5 --themes 4 --opps 4 --buildlogs 4 --alerts 4 --people 5 \
-  --exclude-terms "token,airdrop,pump.fun" \
+  --exclude-terms "token,airdrop,pump.fun" --min-score 3 \
   --out digest.md
 ```
 
@@ -62,6 +62,7 @@ Notes:
 - Score: `upvotes + 2*comment_count + recency bonus + build-log bonus` (breakdown emitted).
 - Confidence: `min(1.0, score/10)` and a `quality` label (low/med/high).
 - Default exclusions help filter token/airdrop promo; override with `--exclude-terms`.
+- Use `--min-score` to drop low-signal posts after weighting.
 
 ## References
 - Read `references/spec.md` for the detailed v0.1 spec and fields.
