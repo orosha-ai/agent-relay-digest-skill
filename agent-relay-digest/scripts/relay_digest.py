@@ -218,6 +218,20 @@ def fmt_thread(p):
     return f"- **{title}** ({source}) — {author} → {url}"
 
 
+def fmt_structured(p):
+    title = (p.get("title", "") or "(untitled)").replace('"', "'")
+    tags = []
+    if is_opportunity(p):
+        tags.append("opportunity")
+    if is_buildlog(p):
+        tags.append("buildlog")
+    return (
+        f"- title=\"{title}\" author={p.get('author','unknown')} "
+        f"source={p.get('source','source')} submolt={p.get('submolt','')} "
+        f"score={score_post(p)} url={p.get('url','')} tags={','.join(tags) if tags else '-'}"
+    )
+
+
 def render_digest(posts):
     posts = sorted(posts, key=score_post, reverse=True)
     top_threads = posts[:6]
@@ -264,6 +278,10 @@ def render_digest(posts):
             lines.append(f"- {name}")
     else:
         lines.append("- (none detected)")
+
+    lines.append("\n## Structured Items (machine-friendly)")
+    for p in top_threads:
+        lines.append(fmt_structured(p))
 
     return "\n".join(lines) + "\n"
 

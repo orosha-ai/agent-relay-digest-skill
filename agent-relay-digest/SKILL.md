@@ -37,6 +37,7 @@ Include:
 ## Output format (recommended)
 - Title: “Agent Relay Digest — {date}”
 - Sections: Top Threads, Themes, Opportunities, Build Logs, People to Follow, Alerts
+- Include a **Structured Items** section with parseable key=value lines for moltys.
 - Keep total length concise (200–400 words).
 
 ## Script (working v1)
